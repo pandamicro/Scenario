@@ -4,12 +4,12 @@
 
 scenario = {};
  
+
+// Scene class can contain a list of actions, which can be executed in order.
 scenario.Scene = Backbone.Collection.extend({
     model: scenario.Action,
     
     initialize: function() {
-        // Links of actions, actions can be linked non linearly
-        //this.links = {};
         
         // Current action
         this._progress = 0;
@@ -23,7 +23,7 @@ scenario.Scene = Backbone.Collection.extend({
         // Length valide or not, everytime action added or deleted, link added
         this.predictLengthValid = false;
         
-        // Flag to indicate if the jump action is a rollback
+        // Flag to indicate if the jump action is a rollback, to avoid incorrect registration in the history
         this.rollback = false;
         
         // Current max index of action
@@ -31,7 +31,6 @@ scenario.Scene = Backbone.Collection.extend({
         
         // Scene end or not
         this.end = false;
-        
         
         this.listenTo(this, "add", this.actionAdded);
     },
@@ -45,6 +44,7 @@ scenario.Scene = Backbone.Collection.extend({
         }
     },
     
+    // Real count for the current version of scene, due to multiple exits in actions, the scene can be variable because of different choices
     count: function() {
         if (!this.predictLengthValid) {
             // Calcul length
@@ -74,6 +74,7 @@ scenario.Scene = Backbone.Collection.extend({
         return this.predictLength;
     },
     
+    // Check if action in progress can be reached
     directReachable: function(progress) {
         if (progress > this.maxProgress) {
             return false;
@@ -97,11 +98,13 @@ scenario.Scene = Backbone.Collection.extend({
         this.end = false;
     },
     
+    // End the scene
     quit: function() {
         this.at(this.progress).quit();
         this.end = true;
     },
     
+    // Run action at progress given, push to history if necessary, update max progress, run action with beginDelay
     run: function(progress) {
         if (this.end) {
             return;
@@ -136,12 +139,14 @@ scenario.Scene = Backbone.Collection.extend({
         else action.start();
     },
     
+    // Pass to next action will be done by ending the current action
     passNext: function() {
         if(this.progress < this.length) {
             this.at(this.progress).end();
         }
     },
     
+    // Goto previous action registed in the history. End current action, retrieve the previous action in the history, mark rollback flag, and run previous
     gotoPrev: function() {
         if(this.progress > 0) {
             this.at(this.progress).end(true);
@@ -154,6 +159,7 @@ scenario.Scene = Backbone.Collection.extend({
         }
     },
     
+    // Move to next action after the current action finished.
     actionEnded: function(action) {
         // Check existance
         var id = this.indexOf(action);
@@ -173,11 +179,13 @@ scenario.Scene = Backbone.Collection.extend({
         }
     },
     
+    // If action exit changed, the predicted length of scene is no longer valid
     actionExitChanged: function() {
         this.predictLengthValid = false;
     },
     
     
+    // Jump to action at progress given
     jumpTo: function(progress) {
         var action = this.at(progress);
         
@@ -198,6 +206,7 @@ scenario.Scene = Backbone.Collection.extend({
         }
     },
     
+    // Jump to action with its name
     jumpToAction: function(name) {
         var progress = this.getActionIndex(name);
         
@@ -205,10 +214,12 @@ scenario.Scene = Backbone.Collection.extend({
     },
     
     
+    // Retrieve an action with name
     getAction: function(name) {
         return this.findWhere({"name": name});
     },
     
+    // Retrieve the index of an action
     getActionIndex: function(name) {
         for (var i = 0; i < this.length; i++) {
             if(this.at(i).get("name") == name)
@@ -217,6 +228,7 @@ scenario.Scene = Backbone.Collection.extend({
         return -1;
     },
     
+    // Additional work to do when a new action added
     actionAdded: function(action) {
         action.set("scene", this);
         
@@ -226,33 +238,13 @@ scenario.Scene = Backbone.Collection.extend({
         if (this.predictLengthValid) {
             this.predictLengthValid = false;
         }
-    },
-    
-    insertActionAfter: function(action, target) {
-        if(action instanceof MseAction) {
-        
-            if (target instanceof String) {
-                target = this.getAction(target);
-            }
-        
-            id = this.actions.indexOf(target);
-            if(id >= 0) {
-                this.actions.splice(id, 0, action);
-                action.set("scene", this);
-                
-                // Predicted length no longer valide
-                if (this.predictLengthValid) {
-                    this.predictLengthValid = false;
-                }
-            }
-            
-        }
     }
 });
 
 
 
 
+// Action class is a individual action. All type of action must extend this class so it will have essentially a scene, a name, a start function, an end function, optionally, multiple exits, a default exit, and begin/end delay
 var Action = Backbone.Model.extend({
     
     defaults: {
@@ -271,8 +263,10 @@ var Action = Backbone.Model.extend({
         // This must be initialized
         "name": "",
         
+        // Delay for beginning
         "beginDelay": 0,
         
+        // Delay after finished
         "endDelay": 0
     },
     
@@ -282,6 +276,7 @@ var Action = Backbone.Model.extend({
         this.listenTo(this, "change:exits", this.autoSetExit);
     },
     
+    // Update exit when exits changed
     autoSetExit: function() {
         var exitkeys = _.keys(this.get("exits"));
         
@@ -291,10 +286,12 @@ var Action = Backbone.Model.extend({
         }
     },
     
+    // Check if there is a defined exit
     hasExit: function() {
         return this.get("exit") != "";
     },
     
+    // Retrieve the exit action name
     getExitName: function() {
         return this.get("exits")[this.get("exit")] ?: "";
     },
@@ -310,26 +307,22 @@ var Action = Backbone.Model.extend({
         }
     },
     
+    // Should be override by child classes
     realStart: function() {},
     realEnd: function() {},
     
+    // Reset state
     reset: function() {
         this.set("state", "INIT");
     },
     
+    // End the action
     quit: function() {
         this.realEnd();
         this.set("state", "END");
     },
     
-    previousAction: function() {
-        var scene = this.get("scene");
-        if(scene) {
-            return scene.getAction(scene.previous);
-        }
-        else return null;
-    },
-    
+    // Start action
     start: function() {
         this.set("state", "START");
         
@@ -337,6 +330,7 @@ var Action = Backbone.Model.extend({
         this.trigger("started");
     },
     
+    // End action and notify scene that this action has ended, stopScena set as true will stop the notification to scene, so the scene won't continue its exit action
     end: function(stopScena, exit) {
         this.trigger("ended");
         try {
