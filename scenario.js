@@ -35,13 +35,11 @@ scenario.Scene = Backbone.Collection.extend({
         this.listenTo(this, "add", this.actionAdded);
     },
     
-    get progress() {
-        return this._progress;
-    },
-    set progress(progress) {
-        if(!isNaN(progress) && progress < this.actions.length && progress >= 0) {
+    progress: function(progress) {
+        if(!isNaN(progress) && progress < this.length && progress >= 0) {
             this._progress = progress;
         }
+        return this._progress;
     },
     
     // Real count for the current version of scene, due to multiple exits in actions, the scene can be variable because of different choices
@@ -90,7 +88,7 @@ scenario.Scene = Backbone.Collection.extend({
         
         this.history = [];
         
-        this.progress = 0;
+        this.progress(0);
         this.predictLength = 0;
         this.predictLengthValid = false;
         this.rollback = false;
@@ -100,7 +98,7 @@ scenario.Scene = Backbone.Collection.extend({
     
     // End the scene
     quit: function() {
-        this.at(this.progress).quit();
+        this.at(this._progress).quit();
         this.end = true;
     },
     
@@ -120,14 +118,14 @@ scenario.Scene = Backbone.Collection.extend({
             this.rollback = false;
         }
         // Otherwise push the current action name to history
-        else this.history.push( this.at(this.progress).get("name") );
-        this.progress = progress;
+        else this.history.push( this.at(this._progress).get("name") );
+        this.progress(progress);
         // Register max progress
-        if (this.progress > this.maxProgress) {
-            this.maxProgress = this.progress;
+        if (this._progress > this.maxProgress) {
+            this.maxProgress = this._progress;
         }
         
-        var action = this.at(this.progress);
+        var action = this.at(this._progress);
         action.reset();
         
         var beginDelay = action.get("beginDelay");
@@ -141,15 +139,15 @@ scenario.Scene = Backbone.Collection.extend({
     
     // Pass to next action will be done by ending the current action
     passNext: function() {
-        if(this.progress < this.length) {
-            this.at(this.progress).end();
+        if(this._progress < this.length) {
+            this.at(this._progress).end();
         }
     },
     
     // Goto previous action registed in the history. End current action, retrieve the previous action in the history, mark rollback flag, and run previous
     gotoPrev: function() {
-        if(this.progress > 0) {
-            this.at(this.progress).end(true);
+        if(this._progress > 0) {
+            this.at(this._progress).end(true);
             // Goto registered previous
             var previous = this.history.pop();
             if (previous) {
@@ -245,7 +243,7 @@ scenario.Scene = Backbone.Collection.extend({
 
 
 // Action class is a individual action. All type of action must extend this class so it will have essentially a scene, a name, a start function, an end function, optionally, multiple exits, a default exit, and begin/end delay
-var Action = Backbone.Model.extend({
+scenario.Action = Backbone.Model.extend({
     
     defaults: {
         // State can be "INIT", "START", "END"
@@ -293,7 +291,8 @@ var Action = Backbone.Model.extend({
     
     // Retrieve the exit action name
     getExitName: function() {
-        return this.get("exits")[this.get("exit")] ?: "";
+        var exitname = this.get("exits")[this.get("exit")];
+        return exitname ? exitname : "";
     },
     
     validate: function(attrs, options) {
